@@ -1,27 +1,38 @@
 import React, { useState } from 'react';
 import { Form, Button, Container, Row, Col, Card, Alert } from 'react-bootstrap';
+import { useAuth } from '../../hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
 
 function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const { login } = useAuth();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Add your login logic here
-    console.log('Login attempted with:', { username, password });
+    if (!username.trim() || !password.trim()) {
+      setError('Please enter both username and password');
+      return;
+    }
     
-    // Placeholder for actual API call
     try {
       setLoading(true);
-      // Mock API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      setError('');
       
-      // Success! Redirect will be handled by the auth context
+      const result = await login(username, password);
+      
+      if (result.success) {
+        navigate('/');
+      } else {
+        setError(result.message || 'Login failed. Please check your credentials.');
+      }
     } catch (err) {
-      setError('Invalid username or password');
+      setError('An error occurred during login. Please try again.');
+      console.error('Login error:', err);
     } finally {
       setLoading(false);
     }

@@ -3,6 +3,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import pymysql
 
+# Load environment variables
 pymysql.install_as_MySQLdb()
 load_dotenv()
 
@@ -72,11 +73,18 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'bawabati.wsgi.application'
 
-# Database (using SQLite by default, update as needed)
+# Database configuration for MySQL/MariaDB
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': os.getenv('DB_NAME', 'bawabati_db2'),
+        'USER': os.getenv('DB_USER', 'root'),
+        'PASSWORD': os.getenv('DB_PASSWORD', 'root'),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '3306'),
+        'OPTIONS': {
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+        },
     }
 }
 

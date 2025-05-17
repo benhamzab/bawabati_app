@@ -1,7 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter as Router } from 'react-router-dom';
-import App from './components/App';
+import { AuthProvider } from './hooks/useAuth';
+import App from './App';
 
 // Import Bootstrap CSS first
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -12,9 +13,11 @@ import './styles/index.css';
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
-    <Router>
-      <App />
-    </Router>
+    <AuthProvider>
+      <Router>
+        <App />
+      </Router>
+    </AuthProvider>
   </React.StrictMode>
 ); 
 

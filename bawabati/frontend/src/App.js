@@ -1,18 +1,22 @@
+// src/App.js
+// src/App.js
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Container } from 'react-bootstrap';
-import Header from './common/Header';
-import Footer from './common/Footer';
-import Dashboard from '../pages/Dashboard';
-import Login from './auth/Login';
-import Register from './auth/Register';
-import Profile from './Profile';
-import CourseList from './courses/CourseList';
-import CourseDetail from './courses/CourseDetail';
-import StudentsScreen from '../screens/StudentsScreen';
-import StudentProfileScreen from '../screens/StudentProfileScreen';
-import UserList from './UserList';
-import { useAuth } from '../hooks/useAuth';
+import Header from './components/common/Header';
+import Footer from './components/common/Footer';
+import Dashboard from './pages/Dashboard';
+import Login from './components/auth/Login';
+import Register from './components/auth/Register';
+import Profile from './components/Profile';
+import CourseList from './components/courses/CourseList';
+import CourseDetail from './components/courses/CourseDetail';
+import StudentsScreen from './screens/StudentsScreen';
+import StudentProfileScreen from './screens/StudentProfileScreen';
+import UserList from './components/UserList';
+import { useAuth } from './hooks/useAuth';
+
+
 
 function App() {
   const { user, loading } = useAuth();
@@ -41,7 +45,8 @@ function App() {
             <Route path="/courses/:id" element={user ? <CourseDetail /> : <Navigate to="/login" />} />
             <Route path="/students" element={user ? <StudentsScreen /> : <Navigate to="/login" />} />
             <Route path="/students/:id" element={user ? <StudentProfileScreen /> : <Navigate to="/login" />} />
-            <Route path="/users" element={user && user.role === 'admin' ? <UserList /> : <Navigate to="/" />} />
+            <Route path="/users" element={user?.role === 'admin' ? <UserList /> : <Navigate to="/" />} />
+            <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </Container>
       </main>
@@ -50,4 +55,4 @@ function App() {
   );
 }
 
-export default App; 
+export default App;
