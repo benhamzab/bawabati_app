@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Course, Enrollment, UserProfile
+from .models import Course, Enrollment, UserProfile, Student
 
 class UserProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
@@ -33,3 +33,9 @@ class EnrollmentSerializer(serializers.ModelSerializer):
         model = Enrollment
         fields = ['id', 'student', 'course', 'enrollment_date', 'status']
         read_only_fields = ['id', 'enrollment_date'] 
+
+class StudentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Student
+        fields = ['id', 'user', 'date_of_birth', 'major']
+        read_only_fields = ['id']

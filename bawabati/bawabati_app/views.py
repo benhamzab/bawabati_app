@@ -5,15 +5,25 @@ from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
 from django.urls import reverse_lazy
 from django.http import HttpResponseForbidden
+
+from .utils import api_error_response
 from .models import UserProfile, Course, Note, Enrollment
 from .forms import UserProfileForm, CourseForm, NoteForm, UserCreateForm
 from django.contrib.auth import login
 from django.contrib import messages
 from rest_framework import generics, permissions, status
+from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from .serializers import UserSerializer, CourseSerializer, EnrollmentSerializer, UserProfileSerializer
 from django.utils import timezone
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.conf import settings
+from django.middleware.csrf import get_token
+from .serializers import StudentSerializer
+from rest_framework.permissions import IsAuthenticated
+
 
 # Helper functions for role checking
 def is_admin(user):
@@ -37,7 +47,59 @@ class TeacherRequiredMixin(UserPassesTestMixin):
 class StudentRequiredMixin(UserPassesTestMixin):
     def test_func(self):
         return is_student(self.request.user)
+class StudentListView(APIView):
+    """
+    API View to list all students.
+    Only accessible by authenticated users.
+    """
+    permission_classes = [IsAuthenticated]
 
+    def get(self, request):
+        students = Student.objects.all()
+        serializer = StudentSerializer(students, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        serializer = StudentSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class StudentDetailView(APIView):
+    """
+    API View to get details of a specific student by ID.
+    Only accessible by authenticated users.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            student = Student.objects.get(pk=pk)
+            serializer = StudentSerializer(student)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Student.DoesNotExist:
+            return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def put(self, request, pk):
+        try:
+            student = Student.objects.get(pk=pk)
+            serializer = StudentSerializer(student, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Student.DoesNotExist:
+            return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def delete(self, request, pk):
+        try:
+            student = Student.objects.get(pk=pk)
+            student.delete()
+            return Response({'message': 'Student deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
+        except Student.DoesNotExist:
+            return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
 # Authentication Views
 def register(request):
     if request.method == 'POST':
@@ -378,4 +440,141 @@ class EnrollmentDetail(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         if self.request.user.is_staff:
             return Enrollment.objects.all()
-        return Enrollment.objects.filter(student=self.request.user) 
+        return Enrollment.objects.filter(student=self.request.user)
+
+# Missing API views for frontend integration
+class CurrentUserView(APIView):
+    """
+    API endpoint to get the currently authenticated user's details.
+    Used by the React frontend to check authentication status.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        user = request.user
+        
+        # If user has a profile, include role information
+        role = 'unknown'
+        if hasattr(user, 'userprofile'):
+            role = user.userprofile.role
+        
+        # Return minimal user data
+        return Response({
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'role': role,
+        })
+
+
+class CSRFTokenView(APIView):
+    """
+    API endpoint to get a CSRF token for form submissions.
+    Used by the React frontend to secure POST requests.
+    """
+    permission_classes = [AllowAny]
+
+    @method_decorator(ensure_csrf_cookie)
+    def get(self, request):
+        # Generate and set CSRF token
+        csrf_token = get_token(request)
+        response = Response({'csrfToken': csrf_token})
+        response.set_cookie(
+            'csrftoken',
+            csrf_token,
+            secure=False,  # Set to True if using HTTPS
+            httponly=False,
+            samesite='Lax'
+        )
+        return response
+
+
+class DashboardStatsView(APIView):
+    """
+    API endpoint to get statistics for the dashboard.
+    Used by the React frontend for the dashboard overview.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        # Basic stats available to all users
+        stats = {
+            'courses': Course.objects.count(),
+        }
+        
+        # Get user role-specific stats
+        user = request.user
+        if hasattr(user, 'userprofile'):
+            role = user.userprofile.role
+            
+            if role == 'admin':
+                # Admin sees all stats
+                stats.update({
+                    'students': User.objects.filter(userprofile__role='student').count(),
+                    'teachers': User.objects.filter(userprofile__role='teacher').count(),
+                    'notes': Note.objects.count(),
+                })
+            elif role == 'teacher':
+                # Teacher sees stats related to their courses
+                teacher_courses = Course.objects.filter(instructor=user)
+                stats.update({
+                    'teacherCourses': teacher_courses.count(),
+                    'teacherNotes': Note.objects.filter(course__instructor=user).count(),
+                    # Count students enrolled in teacher's courses
+                    'teacherStudents': Enrollment.objects.filter(course__instructor=user).values('student').distinct().count(),
+                })
+            elif role == 'student':
+                # Student sees stats related to their enrollments
+                student_enrollments = Enrollment.objects.filter(student=user)
+                stats.update({
+                    'enrolledCourses': student_enrollments.count(),
+                    'activeEnrollments': student_enrollments.filter(status='active').count(),
+                    'completedCourses': student_enrollments.filter(status='completed').count(),
+                })
+        
+        return Response(stats) 
+    
+
+    from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from .models import Enrollment, User, Course, Student
+
+class DashboardStatsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        users_count = User.objects.count()
+        courses_count = Course.objects.count()
+        students_count = Student.objects.count()
+        enrollments_count = Enrollment.objects.count() if Enrollment else 0
+
+        return Response({
+            'users': users_count,
+            'courses': courses_count,
+            'students': students_count,
+            'enrollments': enrollments_count,
+        })
+    
+class UserProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        profile = getattr(user, 'userprofile', None)
+        if not profile:
+            return api_error_response("Profile not found", status.HTTP_404_NOT_FOUND)
+        
+        return Response({"username": user.username, "profile": profile.data})
+class UserProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        profile = getattr(user, 'userprofile', None)
+        if not profile:
+            return Response({'success': False, 'message': 'Profile not found'}, status=404)
+        
+        return Response({"username": user.username, "profile": profile.data})

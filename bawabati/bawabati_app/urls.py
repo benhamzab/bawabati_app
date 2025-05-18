@@ -7,7 +7,7 @@ from .views import (
     UserList, UserDetail,
     CourseList, CourseDetail,
     EnrollmentList, EnrollmentDetail,
-    UserProfileAPI
+    UserProfileAPI, CurrentUserView, CSRFTokenView, DashboardStatsView ,StudentListView, StudentDetailView
 )
 
 def logout_view(request):
@@ -44,10 +44,18 @@ urlpatterns = [
     path('course/notes/add/', views.NoteCreateView.as_view(), name='note_create'),
     path('course/notes/<int:pk>/remove/', views.NoteDeleteView.as_view(), name='note_delete'),
     
-    # API URLs
+    # API URLs - Authentication/User 
+   path('api/csrf/', CSRFTokenView.as_view(), name='api-csrf-token'),
+
+    path('api/current-user/', CurrentUserView.as_view(), name='api-current-user'),
+    path('api/dashboard-stats/', DashboardStatsView.as_view(), name='api-dashboard-stats'),
     path('api/profile/', UserProfileAPI.as_view(), name='api-profile'),
     path('api/users/', UserList.as_view(), name='user-list'),
     path('api/users/<int:pk>/', UserDetail.as_view(), name='user-detail'),
+    path('api/students/', StudentListView.as_view(), name='student-list'),
+    path('api/students/<int:pk>/', StudentDetailView.as_view(), name='student-detail'),
+
+    # API URLs - Courses and Enrollments
     path('api/courses/', CourseList.as_view(), name='course-list'),
     path('api/courses/<int:pk>/', CourseDetail.as_view(), name='course-detail'),
     path('api/enrollments/', EnrollmentList.as_view(), name='enrollment-list'),

@@ -1,117 +1,153 @@
 // src/hooks/useAuth.js
 import { useState, useEffect, createContext, useContext } from 'react';
-import axios from 'axios';
 import React from 'react';
+import { apiEndpoints, api } from '../services/api';
+import { withErrorHandling } from '../utils/errorHandler';
 
-// ✅ Set your backend API URL here
-const API_BASE_URL = "http://127.0.0.1:8000/"; // Replace with your actual backend URL
+// Destructure API endpoints
+const { auth, user } = apiEndpoints;
 
 // Create auth context
 const AuthContext = createContext(null);
-  
+
 // Auth provider component
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
+  const [userState, setUserState] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const initializeAuth = async () => {
-      const savedUser = JSON.parse(localStorage.getItem('user'));
-      if (savedUser) {
-        setUser(savedUser);
-        setLoading(false);
-      } else {
-        await checkAuthStatus();
+      if (process.env.NODE_ENV === 'development') {
+        const savedUser = JSON.parse(localStorage.getItem('user'));
+        if (savedUser) {
+          setUserState(savedUser);
+          setLoading(false);
+          return;
+        }
       }
+      await checkAuthStatus();
     };
 
     initializeAuth();
   }, []);
 
-  // Function to check authentication status
-  const checkAuthStatus = async () => {
+  // ✅ Function to fetch and set CSRF Token
+  const fetchAndSetCSRFToken = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/current-user/`);
-      setUser(response.data);
-      localStorage.setItem('user', JSON.stringify(response.data));
-    } catch (error) {
-      setUser(null);
-      localStorage.removeItem('user');
-    } finally {
-      setLoading(false);
-    }
-  };
+      const response = await api.get('/csrf/', { withCredentials: true });
+      const csrfToken = response.data?.csrfToken;
 
-  // Login function
-  const login = async (username, password) => {
-    try {
-      await fetchCSRFToken();
-      const response = await axios.post(`${API_BASE_URL}/login/`, { username, password });
-      setUser(response.data);
-      localStorage.setItem('user', JSON.stringify(response.data));
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Login failed. Please try again.',
-      };
-    }
-  };
-
-  // Register function
-  const register = async (userData) => {
-    try {
-      await fetchCSRFToken();
-      const response = await axios.post(`${API_BASE_URL}/register/`, userData);
-      setUser(response.data);
-      localStorage.setItem('user', JSON.stringify(response.data));
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Registration failed. Please try again.',
-      };
-    }
-  };
-
-  // Logout function
-  const logout = async () => {
-    try {
-      await axios.post(`${API_BASE_URL}/logout/`);
-      setUser(null);
-      localStorage.removeItem('user');
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Logout failed. Please try again.',
-      };
-    }
-  };
-
-  // Function to fetch CSRF Token (Reusable)
-  const fetchCSRFToken = async () => {
-    try {
-      const csrfResponse = await axios.get(`${API_BASE_URL}/csrf/`);
-      const csrfToken = csrfResponse.data.csrfToken;
-      axios.defaults.headers.common['X-CSRFToken'] = csrfToken;
+      if (csrfToken) {
+        api.defaults.headers.common['X-CSRFToken'] = csrfToken;
+        document.cookie = `csrftoken=${csrfToken}; path=/;`;
+      }
     } catch (error) {
       console.error("Failed to fetch CSRF Token:", error);
     }
   };
 
-  const value = {
-    user,
+  // ✅ Function to check authentication status
+  const checkAuthStatus = async () => {
+    setLoading(true);
+    await fetchAndSetCSRFToken(); // Make sure CSRF token is set
+
+    const { data, error } = await withErrorHandling(
+      () => user.getCurrentUser()
+    );
+
+    if (data && !error) {
+      setUserState(data);
+      if (process.env.NODE_ENV === 'development') {
+        localStorage.setItem('user', JSON.stringify(data));
+      }
+    } else {
+      setUserState(null);
+      localStorage.removeItem('user');
+    }
+
+    setLoading(false);
+  };
+
+  // ✅ Login function
+// src/hooks/useAuth.js
+const login = async (username, password) => {
+  try {
+      await fetchAndSetCSRFToken(); // Make sure CSRF token is set
+
+      const response = await api.post('/login/', {
+          username,
+          password
+      }, { withCredentials: true });
+
+      if (response.data) {
+          setUserState(response.data);
+          localStorage.setItem('user', JSON.stringify(response.data));
+          return { success: true };
+      } else {
+          return { success: false, message: 'Login failed' };
+      }
+  } catch (error) {
+      console.error('Login error:', error);
+      return {
+          success: false,
+          message: 'Login failed. Please try again.',
+      };
+  }
+};
+
+
+  // ✅ Register function
+  const register = async (userData) => {
+    try {
+      await fetchAndSetCSRFToken();
+      const { data, error } = await withErrorHandling(
+        () => auth.register(userData)
+      );
+
+      if (error) return { success: false, message: error.message };
+      setUserState(data);
+      localStorage.setItem('user', JSON.stringify(data));
+
+      return { success: true };
+    } catch (error) {
+      console.error('Registration error:', error);
+      return {
+        success: false,
+        message: 'Registration failed. Please try again.',
+      };
+    }
+  };
+
+  // ✅ Logout function
+  const logout = async () => {
+    try {
+      await fetchAndSetCSRFToken();
+      await auth.logout();
+      setUserState(null);
+      localStorage.removeItem('user');
+      return { success: true };
+    } catch (error) {
+      console.error('Logout error:', error);
+      return {
+        success: false,
+        message: 'Logout failed. Please try again.',
+      };
+    }
+  };
+
+  const authContextValue = {
+    user: userState,
     loading,
     login,
     register,
     logout,
+    refreshUser: checkAuthStatus,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={authContextValue}>{children}</AuthContext.Provider>;
 }
 
-// Custom hook to use auth context
+// ✅ Custom hook to use auth context
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === null) {
